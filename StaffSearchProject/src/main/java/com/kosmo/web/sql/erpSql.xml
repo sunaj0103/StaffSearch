@@ -1,0 +1,214 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper 
+          PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+          "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="erp">
+	<select id="selectSchoolList" resultType="com.kosmo.web.erp.dto.CodeSchoolDto">
+		SELECT school_code, school_name FROM code_school 
+		ORDER BY school_code
+	</select>
+	<select id="selectSkillList" resultType="com.kosmo.web.erp.dto.CodeSkillDto">
+		SELECT skill_code, skill_name FROM code_skill 
+		ORDER BY skill_code
+	</select>
+	<select id="selectReligionList" resultType="com.kosmo.web.erp.dto.CodeReligionDto">
+		SELECT religion_code, religion_name FROM code_religion 
+		ORDER BY religion_code
+	</select>
+
+	<insert id="insertStaff" parameterType="com.kosmo.web.erp.dto.StaffDto">
+		<selectKey keyProperty="staff_no" resultType="int" order="BEFORE">
+			SELECT staff_seq.nextVal FROM dual
+		</selectKey>
+		INSERT INTO staff VALUES(#{staff_no}, #{staff_name}, #{jumin_no}, #{school_code}, #{religion_code}, #{graduate_day})
+	</insert>
+	<insert id="insertStaffSkill" parameterType="map">
+		INSERT ALL
+		<foreach collection="list" item="item" index="index" separator=" ">
+            INTO staff_skill VALUES(extractvalue(dbms_xmlgen.getxmltype('select staff_skill_seq.nextVal - 1 from dual'),'//text()'), #{seq}, #{item})
+        </foreach>
+        SELECT * FROM DUAL
+	</insert> 
+	
+	<select id="recordCount" resultType="int">
+		SELECT COUNT(staff_no) FROM staff
+	</select>
+	<select id="selectSearchAll" parameterType="com.kosmo.web.erp.dto.PagingDto" resultType="com.kosmo.web.erp.dto.StaffDto">
+		<![CDATA[
+		SELECT * 
+		FROM (SELECT * 
+			FROM (
+			SELECT s.staff_no, staff_name, SUBSTR(jumin_no, 8, 1) jumin_no, school_code, s.religion_code, cr.religion_name, graduate_day, 
+			SUBSTR(XMLAGG(XMLELEMENT(COL ,',', k.skill_code) ORDER BY k.staff_skill_no).EXTRACT('//text()').GETSTRINGVAL(), 2) skill_code 
+			FROM staff s, staff_skill k, code_religion cr  
+			WHERE s.staff_no = k.staff_no AND s.religion_code=cr.religion_code 
+			GROUP BY k.staff_no, s.staff_no, staff_name, jumin_no, school_code, s.religion_code, cr.religion_name, graduate_day 
+			ORDER BY s.staff_no DESC) 
+			WHERE ROWNUM<=#{rownumEnd} ORDER BY staff_no ASC)			
+		WHERE ROWNUM<=#{lastPageRecord} ORDER BY staff_no DESC
+		]]>
+	</select>
+	
+	<select id="recordSearchCount" parameterType="com.kosmo.web.erp.dto.SearchDto" resultType="int">
+		<![CDATA[
+		SELECT COUNT(SUBSTR(XMLAGG(XMLELEMENT(COL ,',', k.skill_code) ORDER BY k.staff_skill_no).EXTRACT('//text()').GETSTRINGVAL(), 2)) 
+			FROM staff s, staff_skill k, code_school cs, code_skill ck, code_religion cr 
+			WHERE s.staff_no = k.staff_no 
+		      AND s.school_code = cs.school_code 
+		      AND k.skill_code = ck.skill_code 
+		      AND s.religion_code = cr.religion_code 
+			]]>
+			<if test="staff_name!=null and staff_name!=''">
+	            AND (staff_name LIKE '%${staff_name}%' 
+	            OR school_name LIKE '%${staff_name}%' 
+	            OR skill_name LIKE '%${staff_name}%' 
+	            OR religion_name LIKE '%${staff_name}%') 
+	        </if>
+	        <if test="jumin_no!=null and jumin_no!=''">
+	            AND
+	            <foreach collection="jumin_no" item="jumin_no" index="index" open="(" close=")" separator="OR">
+	            	jumin_no LIKE '%-'||${jumin_no}||'%' 
+        		</foreach>
+	        </if>
+	        <if test="school_code!=null and school_code!=''">
+	            AND
+	            <foreach collection="school_code" item="school_code" index="index" open="(" close=")" separator="OR">
+	            	s.school_code = ${school_code} 
+        		</foreach>
+	        </if>
+	        <if test="skill_code!=null and skill_code!=''">
+	            AND
+	            <foreach collection="skill_code" item="skill_code" index="index" open="(" close=")" separator="OR">
+	            	k.skill_code LIKE '%${skill_code}%'
+        		</foreach>
+	        </if>
+	        <if test="religion_code!=null and religion_code!=0">
+	            AND s.religion_code = ${religion_code}
+	        </if>
+	        <if test="graduateStart!=null and graduateStart!='--'">
+	            AND TO_DATE(graduate_day,'YYYY-MM-DD') BETWEEN TO_DATE(#{graduateStart},'YYYY-MM-DD')  
+	            <choose>
+	            	<when test="graduateEnd!=null and graduateEnd!='--'">
+	            		AND TO_DATE(#{graduateEnd},'YYYY-MM-DD')
+	            	</when>
+	            	<otherwise>
+	            		AND TO_CHAR(SYSDATE,'YYYY-MM-DD')
+	            	</otherwise>
+	            </choose>
+	        </if>
+	    <![CDATA[
+	    GROUP BY k.staff_no, s.staff_no, s.staff_name, jumin_no, s.school_code, s.religion_code, graduate_day 
+	    ]]>
+	</select>
+	<select id="selectSearch" parameterType="map" resultType="com.kosmo.web.erp.dto.StaffDto">
+		<![CDATA[
+		SELECT * 
+		FROM (SELECT * 
+			FROM (
+			SELECT s.staff_no, s.staff_name, SUBSTR(jumin_no, 8, 1) jumin_no, s.school_code, s.religion_code, cr.religion_name, graduate_day,
+			SUBSTR(XMLAGG(XMLELEMENT(COL ,',', k.skill_code) ORDER BY k.staff_skill_no).EXTRACT('//text()').GETSTRINGVAL(), 2) skill_code 
+			FROM staff s, staff_skill k, code_school cs, code_skill ck, code_religion cr 
+			WHERE s.staff_no = k.staff_no 
+		      AND s.school_code=cs.school_code 
+		      AND k.skill_code=ck.skill_code 
+		      AND s.religion_code=cr.religion_code 
+			]]>
+				<if test="dto.staff_name!=null and dto.staff_name!=''">
+	            	AND (staff_name LIKE '%${dto.staff_name}%' 
+		            OR school_name LIKE '%${dto.staff_name}%' 
+		            OR skill_name LIKE '%${dto.staff_name}%' 
+		            OR religion_name LIKE '%${dto.staff_name}%') 
+	        	</if>
+	        	<if test="dto.jumin_no!=null">
+		            AND
+		            <foreach collection="dto.jumin_no" item="jumin_no" index="index" open="(" close=")" separator="OR">
+		            	jumin_no LIKE '%-'||${jumin_no}||'%' 
+	        		</foreach>
+		        </if>
+		        <if test="dto.school_code!=null">
+		            AND
+		            <foreach collection="dto.school_code" item="school_code" index="index" open="(" close=")" separator="OR">
+		            	s.school_code = ${school_code}
+	        		</foreach>
+		        </if>
+		        <if test="dto.skill_code!=null">
+		            AND
+		            <foreach collection="dto.skill_code" item="skill_code" index="index" open="(" close=")" separator="OR">
+		            	k.skill_code = ${skill_code} 
+	        		</foreach>
+		        </if>
+	        	<if test="dto.religion_code!=null and dto.religion_code!=0">
+		            AND s.religion_code = ${dto.religion_code}
+		        </if>
+		        <if test="dto.graduateStart!=null and dto.graduateStart!='--'">
+		            AND TO_DATE(graduate_day,'YYYY-MM-DD') BETWEEN TO_DATE(#{dto.graduateStart},'YYYY-MM-DD')  
+		            <choose>
+		            	<when test="dto.graduateEnd!=null and dto.graduateEnd!='--'">
+		            		AND TO_DATE(#{dto.graduateEnd},'YYYY-MM-DD')
+		            	</when>
+		            	<otherwise>
+		            		AND TO_CHAR(SYSDATE,'YYYY-MM-DD')
+		            	</otherwise>
+		            </choose>
+		        </if>
+			GROUP BY k.staff_no, s.staff_no, s.staff_name, jumin_no, s.school_code, s.religion_code, cr.religion_name, graduate_day 
+			ORDER BY 
+				<choose>
+		            <when test="dto.sortColumn!=null and dto.sortColumn!=''">
+		            	${dto.sortColumn} 
+			        	<if test="dto.sort == 'ASC'">ASC</if> 
+						<if test="dto.sort == 'DESC'">DESC</if>
+		            </when>
+		            <otherwise>
+		            	staff_no DESC
+		            </otherwise>
+		    	</choose>
+			) 
+			<![CDATA[
+			WHERE ROWNUM<=#{pageDto.rownumEnd} ORDER BY 
+			]]>
+			<choose>
+		    	<when test="dto.sortColumn!=null and dto.sortColumn!=''">
+		        	${dto.sortColumn} 
+			        <if test="dto.sort!=null  and dto.sort.equals('ASC')">DESC</if> 
+					<if test="dto.sort!=null  and dto.sort.equals('DESC')">ASC</if>
+				</when>
+		     	<otherwise>
+		            staff_no ASC
+		        </otherwise>
+		    </choose>
+			)	
+		<![CDATA[		
+		WHERE ROWNUM<=#{pageDto.lastPageRecord} ORDER BY 
+		]]>
+		<choose>
+			<when test="dto.sortColumn!=null and dto.sortColumn!=''">
+		    	${dto.sortColumn} 
+			    <if test="dto.sort!=null  and dto.sort.equals('ASC')">ASC</if> 
+				<if test="dto.sort!=null  and dto.sort.equals('DESC')">DESC</if>
+			</when>
+		    <otherwise>
+		    	staff_no DESC
+			</otherwise>
+		</choose>
+	</select>
+	
+	<select id="selectOneStaff" parameterType="int" resultType="com.kosmo.web.erp.dto.StaffDto">
+		SELECT s.staff_no, staff_name, jumin_no, school_code, religion_code, graduate_day, SUBSTR(XMLAGG(XMLELEMENT(COL ,',', k.skill_code) ORDER BY k.staff_skill_no).EXTRACT('//text()').GETSTRINGVAL(), 2) skill_code FROM staff s, staff_skill k
+		WHERE s.staff_no = k.staff_no AND s.staff_no=#{staffNo}
+		GROUP BY k.staff_no, s.staff_no, staff_name, jumin_no, school_code, religion_code, graduate_day
+	</select>
+	
+	<update id="updateStaff" parameterType="com.kosmo.web.erp.dto.StaffDto">
+		UPDATE staff SET staff_name=#{staff_name}, jumin_no=#{jumin_no}, school_code=#{school_code}, religion_code=#{religion_code}, graduate_day=#{graduate_day}
+		WHERE staff_no=#{staff_no}
+	</update>
+	
+	<delete id="deleteStaff" parameterType="int">
+		DELETE FROM staff WHERE staff_no=#{staffNo}
+	</delete>
+	<delete id="deleteStaffSkill" parameterType="int">
+		DELETE FROM staff_skill WHERE staff_no=#{staffNo}
+	</delete>
+	
+</mapper>
